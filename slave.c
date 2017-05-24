@@ -2,15 +2,14 @@
 
 struct SMessage msgIn, msgOut;
 
-int pID; 		//Numer PID procesu (nr legionu)
-int R;			//liczba legionistów w legionie procesu
-int myTrakt;		//Nr traktu, którym legion ma przejść
-int state;		//Stan (WAITS, STARTS, ON_TRAKT)
-int priority;		//Priorytet, z jakim proces ubiega się o trakt
-int sum;		//Suma legionistów obecnych na trakcie
-int barier;		//Na ile odpowiedzi czeka proces
-int waiting[]; //Procesy, do których proces musi wysłać ‘A’ i/lub ‘L’
-vector<int> waiting;
+struct SMyTrakt{
+	int myTrakt;	//Nr traktu, którym legion ma przejść
+	int priority;	//Priorytet, z jakim proces ubiega się o trakt
+};
+
+int sum;			//Suma legionistów obecnych na trakcie
+int barier;			//Na ile odpowiedzi czeka proces
+int waiting[];		//Procesy, do których proces musi wysłać ‘A’ i/lub ‘L’
 
 void receives() {
 	while(true) {
