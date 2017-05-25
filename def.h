@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <pvm3.h>
+#include <signal.h>
 
 #define SLAVENAME "slave"
 
@@ -19,6 +20,10 @@
 #define MSG_REQUEST 'R'
 #define MSG_ANSWER 'A'
 #define MSG_LEAVE 'L'
+
+//Czy slave ma wysyłać wiadomości do mastera o wchodzeniu i schodzeniu z trasy
+#define FEEDBACK_ON 1
+#define FEEDBACK_OFF 0
 
 struct STrakt {
 	int t;		//maksymalna liczba legionistów, jaka może się poruszać danym traktem
