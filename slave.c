@@ -128,8 +128,8 @@ void Receives() {
 	//Żądanie
 	if (msgIn.type == MSG_REQUEST)
 	{
-		if (trakts[msgIn.t] <= msgIn.iD)
-			trakts[msgIn.t] = msgIn.iD + 1;
+		if (trakts[msgIn.t].iD <= msgIn.iD)
+			trakts[msgIn.t].iD = msgIn.iD + 1;
 
 		if (msgIn.t == myTrakt.t)
 		{
@@ -181,7 +181,7 @@ void MRecvTout(double tout)
 	time_t start, stop;
 	while (tout > 0)
 	{
-		start = time();
+		start = time(NULL);
 		
 		//odbieranie wiadomości
 		struct timeval timeout;
@@ -190,7 +190,7 @@ void MRecvTout(double tout)
 		if (pvm_trecv(-1, MSG_SLV, &timeout) > 0)
 			Receives();
 
-		stop = time();
+		stop = time(NULL);
 		tout -= ((double)(stop - start)) / CLOCKS_PER_SEC;
 	}
 }
