@@ -3,7 +3,6 @@
 #include <time.h>
 #include <pvm3.h>
 #include <signal.h>
-#include <sys/time.h>
 #include <math.h>  
 
 #define SLAVENAME "slave"

@@ -186,7 +186,7 @@ void MRecvTout(double tout)
 		//odbieranie wiadomości
 		struct timeval timeout;
 		timeout.tv_sec = (int) tout;
-		timeout.tv_usec = (int) (fmod(tout,1.0) / CLOCKS_PER_SEC * 1000000);
+		timeout.tv_usec = (int) ((tout - floor(tout) / CLOCKS_PER_SEC * 1000000);
 		if (pvm_trecv(-1, MSG_SLV, &timeout) > 0)
 			Receives();
 
