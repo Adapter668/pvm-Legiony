@@ -6,7 +6,7 @@ struct SMyTrakt{
 	int t;			//Nr traktu, którym legion ma przejść
 	int priority;	//Priorytet, z jakim proces ubiega się o trakt
 	int sum;		//Suma legionistów obecnych na trakcie
-	int barier;		//Na ile odpowiedzi czeka proces
+	int barrier;		//Na ile odpowiedzi czeka proces
 }myTrakt;
 
 struct STids{
@@ -38,6 +38,76 @@ void PrepareMessage()
 	pvm_pkint(&msgOut.tID, 1, 1);
 	pvm_pkint(&msgOut.t, 1, 1);
 	pvm_pkint(&msgOut.iD, 1, 1);
+}
+
+//Wysyłanie komunikatu zwrotnego do mastera (do testów)
+int feedback;
+int maserTID;
+void SendToMaster()
+{
+	if (feedback == FEEDBACK_ON)
+	{
+		PrepareMessage();
+		pvm_send(maserTID, MSG_SLV);
+	}
+}
+
+//Wysyłanie wiadomości do legionów
+/*
+type	-	typ komunikatu
+t		-	jakiego traktu dotyczy wiadomość
+*/
+void SendMessage(char type, int t, int tid)
+{
+	msgOut.tID = legion.tID;
+	msgOut.type = type;
+	msgOut.t = t;
+
+	switch (type)
+	{
+		//Ubieganie o trakt
+	case MSG_REQUEST:
+		msgOut.iD = myTrakt.priority;
+		PrepareMessage();
+		pvm_bcast(GRPNAME, MSG_SLV);
+		break;
+
+		//Wysłanie liczby legionistów na trakcie
+	case MSG_ANSWER:
+		//Legion jest na trakcie
+		if (myTrakt.t == t && legion.state == ON_TRAKT)
+		{
+			msgOut.iD = legion.r;
+			PrepareMessage();
+			pvm_mcast(waiting.tID, waiting.n, MSG_SLV);
+		}
+		else
+		{
+			msgOut.iD = 0;
+			PrepareMessage();
+			pvm_send(tid, MSG_SLV);
+		}
+		break;
+
+		//Opuszcza trakt
+	case MSG_LEAVE:
+		msgOut.iD = legion.r;
+
+		//wysłanie do mastera
+		SendToMaster();
+		//wysłanie do wszystkich
+		PrepareMessage();
+		pvm_mcast(waiting.tID, waiting.n, MSG_SLV);
+		break;
+
+	case MSG_ON_TRAKT:
+		msgOut.iD = legion.r;
+		SendToMaster();
+		break;
+
+	default:
+		break;
+	}
 }
 
 /*Odpakowanie wiadomości 
@@ -132,75 +202,7 @@ void MRecv()
 	Receives();
 }
 
-//Wysyłanie komunikatu zwrotnego do mastera (do testów)
-int feedback;
-int maserTID;
-void SendToMaster()
-{
-	if (feedback == FEEDBACK_ON)
-	{
-		PrepareMessage();
-		pvm_send(maserTID, MSG_SLV);
-	}
-}
 
-//Wysyłanie wiadomości do legionów
-/*
-	type	-	typ komunikatu
-	t		-	jakiego traktu dotyczy wiadomość
-*/
-void SendMessage(char type, int t, int tid)
-{
-	msgOut.tID = legion.tID;
-	msgOut.type = type;
-	msgOut.t = t;
-
-	switch (type)
-	{
-		//Ubieganie o trakt
-	case MSG_REQUEST:
-		msgOut.iD = myTrakt.priority;
-		PrepareMessage();
-		pvm_bcast(GRPNAME, MSG_SLV);
-		break;
-
-		//Wysłanie liczby legionistów na trakcie
-	case MSG_ANSWER:
-		//Legion jest na trakcie
-		if (myTrakt.t == t && legion.state == ON_TRAKT)
-		{
-			msgOut.iD = legion.r;
-			PrepareMessage();
-			pvm_mcast(waiting.tID, waiting.n, MSG_SLV);
-		}
-		else
-		{
-			msgOut.iD = 0;
-			PrepareMessage();
-			pvm_send(tid, MSG_SLV);
-		}
-		break;
-
-		//Opuszcza trakt
-	case MSG_LEAVE:
-		msgOut.iD = legion.r;
-
-		//wysłanie do mastera
-		SendToMaster();
-		//wysłanie do wszystkich
-		PrepareMessage();
-		pvm_mcast(waiting.tID, waiting.n, MSG_SLV);
-		break;
-
-	case MSG_ON_TRAKT:
-		msgOut.iD = legion.r;
-		SendToMaster();
-		break;
-
-	default:
-		break;
-	}
-}
 
 //Wchodzenie na trakt
 void Enter() {
