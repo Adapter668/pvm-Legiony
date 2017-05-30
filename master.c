@@ -134,10 +134,10 @@ main(){
 	
 	//Wysłanie do procesów informacji o ich legionie
 	for (i = 0; i < L; i++){
-		legions[i].pID = tids[i];
+		legions[i].tID = tids[i];
 		pvm_initsend(PvmDataDefault);
 		pvm_pkint(&legions[i].r, 1, 1);
-		pvm_send(legions[i].pID, MSG_MSTR);
+		pvm_send(legions[i].tID, MSG_MSTR);
 	}
 
 	//Wysłanie do procesów informacji o traktach
@@ -162,17 +162,17 @@ main(){
 	for (i = 0; i < T; i++)
 		fprintf(file, "T;%d;%d\n", i, trakts[i].t);
 	for (i = 0; i < L; i++)
-		fprintf(file, "L;%d;%d\n", legions[i].r, legions[i].pID);
+		fprintf(file, "L;%d;%d\n", legions[i].r, legions[i].tID);
 
 	while (1)
 	{
 		int bufid = pvm_recv(-1, MSG_SLV);
-		pvm_upkbyte(&msgIn.type);
-		pvm_upkint(&msgIn.pID, 1, 1);
+		pvm_upkbyte(&msgIn.type, 1, 1);
+		pvm_upkint(&msgIn.tID, 1, 1);
 		pvm_upkint(&msgIn.t, 1, 1);
 		pvm_upkint(&msgIn.iD, 1, 1);
 
-		fprintf(file, "%c;%d;%d;%d\n", msgIn.type, msgIn.pID, msgIn.t, msgIn.iD);
+		fprintf(file, "%c;%d;%d;%d\n", msgIn.type, msgIn.tID, msgIn.t, msgIn.iD);
 	}
 	fclose(file);
 	pvm_exit();					//Opuszczenie maszyny wirtualnej przez mastera

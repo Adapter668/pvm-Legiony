@@ -3,13 +3,29 @@
 struct SMessage msgIn, msgOut;
 
 struct SMyTrakt{
-	int n;	//Nr traktu, którym legion ma przejść
+	int t;			//Nr traktu, którym legion ma przejść
 	int priority;	//Priorytet, z jakim proces ubiega się o trakt
+	int sum;		//Suma legionistów obecnych na trakcie
+	int barier;		//Na ile odpowiedzi czeka proces
 }myTrakt;
 
-int sum;			//Suma legionistów obecnych na trakcie
-int barier;			//Na ile odpowiedzi czeka proces
-int waiting[];		//Procesy, do których proces musi wysłać ‘A’ i/lub ‘L’
+struct STids{
+	int tID[T];
+	int n;
+}waiting;
+
+void WaitingAdd(int tID)
+{
+	waiting.tID[waiting.n++] = tID;
+}
+
+void WaitingClear()
+{
+	int i;
+	for (i = 0; i < waiting.n; i++)
+		waiting.tID[waiting.n++] = -1;
+	waiting.n = 0;
+}
 
 struct SLegion legion;
 struct STrakt trakts[T];
@@ -37,11 +53,21 @@ void UnpackMessage()
 //Odbiór wiadomości (timeout)
 void MRecvTout(double tout)
 {
-	struct timeval timeout);
-	timeout.tv_sec = int(tout);
-	timeout.tv_usec = int(tout % 1 / CLOCKS_PER_SEC * 1000000);
-	if (pvm_trecv(-1, MSG_SLV, &timeout) > 0)
-		Receives();
+	time_t start, stop;
+	while (tout > 0)
+	{
+		start = time();
+		
+		//odbieranie wiadomości
+		struct timeval timeout;
+		timeout.tv_sec = (int) tout;
+		timeout.tv_usec = (int) (fmod(tout,1.0) / CLOCKS_PER_SEC * 1000000);
+		if (pvm_trecv(-1, MSG_SLV, &timeout) > 0)
+			Receives();
+
+		stop = time();
+		restt -= ((double)(stop - start)) / CLOCKS_PER_SEC;
+	}
 }
 
 //Odbiór wiadomości (blokujący)
@@ -65,11 +91,10 @@ void SendToMaster()
 
 //Wysyłanie wiadomości do legionów
 /*
-	tid		-	tid Legionu, fo którego wysyłany jest komunikat
 	type	-	typ komunikatu
 	t		-	jakiego traktu dotyczy wiadomość
 */
-void SendMessage(int tid, char type, int t)
+void SendMessage(char type, int t, int tid)
 {
 	msgOut.pID = legion.pID;
 	msgOut.type = type;
@@ -86,13 +111,19 @@ void SendMessage(int tid, char type, int t)
 
 		//Wysłanie liczby legionistów na trakcie
 	case MSG_ANSWER:
-		if (myTrakt.n == t)
+		//Legion jest na trakcie
+		if (myTrakt.t == t && legion.state == ON_TRAKT)
+		{
 			msgOut.iD = legion.r;
+			PrepareMessage();
+			pvm_mcast(tids.tID, tids.n, MSG_SLV);
+		}
 		else
+		{
 			msgOut.iD = 0;
-		
-		PrepareMessage();
-		pvm_send(tid, MSG_SLV);
+			PrepareMessage();
+			pvm_send(tid, MSG_SLV);
+		}
 		break;
 
 		//Opuszcza trakt
@@ -103,167 +134,130 @@ void SendMessage(int tid, char type, int t)
 		SendToMaster();
 		//wysłanie do wszystkich
 		PrepareMessage();
-		pvm_bcast(GRPNAME, MSG_SLV);
+		pvm_mcast(tids.tID, tids.n, MSG_SLV);
+		break;
+
+	case MSG_ON_TRAKT:
+		msgOut.iD = legion.r;
+		SendToMaster();
+		break;
+
+	default:
 		break;
 	}
 }
 
 //Reakcja na wiadomość
 void Receives() {
-	//todo
+	//Odpakowanie wiadomości
 	UnpackMessage();
-	while(true) {
-		//receive(-1, &msgIn);
-		pvm_recv(-1, MSG_MSTR); //tutaj raczej nie master
-		pvm_upkbyte(msgIn.type);
-		pvm_upkint(&msgIn.PID, 1, 1);
-		pvm_upkint(&msgIn.T, 1, 1);
-		pvm_upkint(&msgIn.ID, 1, 1);
+	
+	//Żądanie
+	if (msgIn.type == MSG_REQUEST) 
+	{
+		if(trakts[msgIn.t] <= msgIn.iD) 
+				trakts[msgIn.t] = msgIn.iD + 1;
 
-		if(trakts[msgIn.T] <= msgIn.ID) trakts[msgIn.T] = msgIn.ID + 1;
+		if(msgIn.t == myTrakt.t) 
+		{
+			if (legion.state == ON_TRAKT) {
+				SendMessage(MSG_ANSWER, myTrakt.t, msgIn.tID);
+				WaitingAdd(msgIn.tID);
+			}
 
-		if(msgIn.type == ‘R’) {
-			pvm_initsend(PvmDataDefault);
-			if(msgIn.T == myTrakt) {
-				if(state == ON_TRAKT) {
-					pvm_pkbyte('A', 1, 1);
-					pvm_pkint(&pID, 1, 1);
-					pvm_pkint(&msgIn.T, 1, 1);
-					pvm_pkint(&R, 1, 1);
-					pvm_send(msgIn.PID, pID); //tu chyba coś inaczej
-					/*msgOut.type = ‘A’;
-					msgOut.PID = pID;
-					msgOut.T = msgIn.T;
-					msgOut.ID = R;
-					send(msgIn.PID, msgOut);*/
-					waiting.push(msgIn.PID); //waiting.append(msgIn.PID);
+			if(legion.state == STARTS) 
+			{
+				if (msgIn.tID < myTrakt.priority || (msgIn.tID == myTrakt.priority && msgIn.tID < legion.tID))
+				{
+					SendMessage(MSG_ANSWER, myTrakt.t, msgIn.tID);
+				} 
+				else 
+				{
+					WaitingAdd(msgIn.tID);
 				}
+			}
+		} 
+		else
+			SendMessage(MSG_ANSWER, myTrakt.t, msgIn.tID);
+	} 
 
-				if(state == STARTS) {
-					if(msgIn.ID < priority || (msgIn.ID == priority && msgIn.PID < pID) ) {
-						pvm_pkbyte('A', 1, 1);
-						pvm_pkint(&pID, 1, 1);
-						pvm_pkint(&msgIn.T, 1, 1);
-						pvm_pkint(0, 1, 1);
-						pvm_send(msgIn.PID, pID); //tu chyba coś inaczej
-						/*msgOut.type = ‘A’;
-						msgOut.PID = pID;
-						msgOut.T = msgIn.T;
-						msgOut.ID = 0;
-						send(msgIn.PID, msgOut);*/
-					} else {
-						waiting.push(msgIn.PID); //waiting.append(msgIn.PID);
-					}
-				}
-			} else {
-				pvm_pkbyte('A', 1, 1);
-				pvm_pkint(&pID, 1, 1);
-				pvm_pkint(&msgIn.T, 1, 1);
-				pvm_pkint(0, 1, 1);
-				pvm_send(msgIn.PID, pID); //tu chyba coś inaczej
-				/*msgOut.type = ‘A’;
-				msgOut.PID = pID;
-				msgOut.T = msgIn.T;
-				msgOut.ID = 0;
-				send(msgIn.PID, msgOut);*/
-			}
-		} else if(msgIn.type == ‘L’) {
-			if(msgIn.T == myTrakt) {
-				sum -= msgIn.ID;
-			}
-		} else {
-			if(msgIn.T == myTrakt) {
-				sum += msgIn.ID;
-				barier--;
-			}
+	//Opuszczanie trasy
+	if (msgIn.type == MSG_LEAVE)
+	{
+		if (msgIn.t == myTrakt.t)
+		{
+			myTrakt.sum -= msgIn.iD;
+		}
+	}
+
+	//Odpowiedź
+	if (msgIn.type == MSG_ANSWER)
+	{
+		if (msgIn.t == myTrakt.t) 
+		{
+			myTrakt.sum += msgIn.iD;
+			barier--;
 		}
 	}
 }
 
 //Wchodzenie na trakt
 void Enter() {
-	//todo
-	state = STARTS;
-	priority = trakts[myTrakt].iD;
-	trakts[myTrakt].iD++;
+	//Zmiana stanu
+	legion.state = STARTS;
+	
+	//Ustawienie zmiennych traktu, o który legion będzie się ubiegał
+	myTrakt.t = rand() % T;
+	myTrakt.priority = trakts[myTrakt.t].iD++;
+	myTrakt.sum = 0;
+	myTrakt.barrier = L - 1;
 
-	barrier = L - 1;
+	//Wysłanie żadania 
+	SendMessage(MSG_REQUEST, myTrakt.t, -1);
 
-	pvm_initsend(PvmDataDefault);
-	pvm_pkbyte('R', 1, 1);
-	pvm_pkint(&pID, 1, 1);
-	pvm_pkint(&myTrakt, 1, 1);
-	pvm_pkint(&priority, 1, 1);
-	/*msgOut.type = ‘R’;
-	msgOut.ID = priority;*/
-
-	for(int i = 0; i < L; i++) {
-		if(i!=pID) {
-			pvm_send(i, pID);
-			//send(i, msgOut);
-		}
-	}
-
-	while(barrier > 0);
-	while( sum + R >  trakts[myTrakt].t);
+	//Oczekiwanie na wszystkie odpowiedzi
+	while (myTrakt.barrier > 0)
+		MRecv();
+	
+	//Jeśli trasa przepełniona, to oczekiwanie na jej zwolnienie
+	while (myTrakt.sum + legion.r > trakts[myTrakt.t].t)
+		MRecv();
 }
 
 //Przjeście traktem
 void Go() {
-	//todo
-	for(int i = 0; i < waiting.size(); i++) {
-		pvm_initsend(PvmDataDefault);
-		pvm_pkbyte('A', 1, 1);
-		pvm_pkint(&pID, 1, 1);
-		pvm_pkint(&myTrakt, 1, 1);
-		pvm_pkint(&L, 1, 1);
-		pvm_send(waiting[i], pID);
-		/*msgOut.type = ‘A’;
-		msgOut.PID = pID;
-		msgOut.T = myTrakt;
-		msgOut.ID = L;
-		send(waiting[i], msgOut);*/
-	}
-
+	//Zmiana stanu
 	state = ON_TRAKT;
-	wait(trakts[myTrakt].time);
 
-	for(int i = 0; i < waiting.size(); i++) {
-		pvm_initsend(PvmDataDefault);
-		pvm_pkbyte('L', 1, 1);
-		pvm_pkint(&pID, 1, 1);
-		pvm_pkint(&myTrakt, 1, 1);
-		pvm_pkint(&L, 1, 1);
-		pvm_send(waiting[i], pID);
-		/*msgOut.type = ‘L’;
-		msgOut.PID = pID;
-		msgOut.T = myTrakt;
-		msgOut.ID = L;
-		send(waiting[i], msgOut);*/
-	}
-	waiting.clear();
+	//Wysłanie wiadomości o wejściu na trakt do mastera
+	SendMessage(MSG_ON_TRAKT, myTrakt.t, -1);
+	
+	//Wysłanie wiadomości Answer do oczekujących legionów
+	SendMessage(MSG_ANSWER, myTrakt.t, -1);
+
+	//Spędzenie czasu na trakcie
+	MRecvTout((double) trakts[myTrakt.t].time);
+
+	//Zejście z traktu
+	SendMessage(MSG_LEAVE, myTrakt.t, -1);
+
+	//Wyczyszczenie tablicy TIDS
+	WaitingClear();
 }
 
 //Odpoczynek
 void Rest() {
-	myTrakt.n = -1;
+	myTrakt.t = -1;
 	legion.state = WAITS;
 	
 	//Odczekanie losowego czasu - jeśli pojawi się jakaś wiadomość, to ją odbierz
-	double restt = double(rand()%5 + 1);
-	time_t start, stop;
-	while (restt > 0)
-	{
-		start = time();
-		//odbieranie wiadomości
-		MRecvTout(restt);
-		stop = time();
-		restt -= ((double)(stop - start)) / CLOCKS_PER_SEC;
-	}
+	MRecvTout((double) (rand()%5 + 1));
 }
 
 main() {
 	srand(time(NULL));
+	TidsClear();
+
 	int i;
 	legion.pID = pvm_mytid();
 	
@@ -297,5 +291,5 @@ main() {
 		Rest();
 	}
 
-	pvm_exit();					//Opuszczenie maszyny wirtualnej przez mastera
+	pvm_exit();					//Opuszczenie maszyny wirtualnej przez slavea
 }

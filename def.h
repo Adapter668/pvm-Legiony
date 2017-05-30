@@ -4,6 +4,7 @@
 #include <pvm3.h>
 #include <signal.h>
 #include <sys/time.h>
+#include <math.h>  
 
 #define SLAVENAME "slave"
 
@@ -21,6 +22,7 @@
 #define MSG_REQUEST 'R'
 #define MSG_ANSWER 'A'
 #define MSG_LEAVE 'L'
+#define MSG_ON_TRAKT 'T'
 
 #define GRPNAME "Legions"
 
@@ -30,7 +32,7 @@
 
 struct STrakt {
 	int t;		//maksymalna liczba legionistów, jaka może się poruszać danym traktem
-	int time;	//czas przejścia przez dany trakt (ms)
+	int time;	//czas przejścia przez dany trakt (s)
 	int iD;		//aktualny priorytet jaki dostanie proces, jeśli będzie ubiegał się o trakt
 };		
 
@@ -42,7 +44,7 @@ struct SMessage {
 };
 
 struct SLegion {
-	int pID;	//Numer PID procesu (nr legionu)
+	int tID;	//Numer PID procesu (nr legionu)
 	int r;		//liczba legionistów w legionie procesu
 	int state;	//Stan (WAITS, STARTS, ON_TRAKT)
 };
