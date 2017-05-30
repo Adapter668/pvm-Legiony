@@ -7,15 +7,9 @@ int tids[L];				//Identyfikatory procesów potomnych
 FILE * file;
 
 void intHandler(int sig) {
+	int i;
 	printf("Koncze prace...\n");
-	for (i = 0; i < L; i++)
-	{
-		if (tids[i] > 0 && tids[i] < 2 * L)
-		{
-			pvm_kill(tids[i]);	//Zakonczenie pracy uruchomionych procesow
-			printf("Zamykam proces %d o PID %d\n", i,tids[i]);
-		}
-	}
+	pvm_halt();
 	pvm_exit();
 
 	if (file != NULL)
@@ -41,12 +35,12 @@ void ConfigInit(){
 
 	//Legioniści
 	for (i = 0; i < L; i++)
-		legions[i].R = maxl;
+		legions[i].r = maxl;
 
 	int todel = rand() % (suml - sumt - 1);
 	for (i = 0; i < todel; i++)
 	{
-		legions[rand() % L].R--;
+		legions[rand() % L].r--;
 		suml--;
 	}
 
@@ -54,7 +48,7 @@ void ConfigInit(){
 	for (i = 0; i < T; i++)
 	{
 		trakts[i].t = mint;
-		trakts[i].time = rand() % 100 + 20;
+		trakts[i].time = rand() % 9 + 2;
 	}
 
 	todel = rand() % (suml - sumt - 1);
@@ -69,16 +63,16 @@ void ConfigInit(){
 	maxl = 0;
 	for (i = 0; i < L; i++)
 	{
-		if (legions[i].R < 0)
+		if (legions[i].r < 0)
 		{
 			printf("Legion z ujemna liczba legionistow!\n");
 			exit(1);
 		}
 
-		suml += legions[i].R;
-		if (legions[i].R > maxl)
+		suml += legions[i].r;
+		if (legions[i].r > maxl)
 		{
-			maxl = legions[i].R;
+			maxl = legions[i].r;
 		}
 	}
 
@@ -126,12 +120,7 @@ main(){
 	
 	if (nproc < L)				//Sprawdzenie poprawnosci uruchomienia procesow slave
 	{
-		for (i = 0; i < L; i++)
-			if (tids[i] > 0 && tids[i] < 2 * L)
-			{
-				pvm_kill(tids[i]);	//Zakonczenie pracy uruchomionych procesow
-				printf("Zamykam proces %d o PID %d\n", i, tids[i]);
-			}
+		pvm_halt();
 		printf("Uruchomienie %d legionow zakonczylo sie bledem. Uruchomiono %d procesow\n", L, nproc);
 		exit(1);
 	}
@@ -140,14 +129,15 @@ main(){
 	int feedback = FEEDBACK_ON;
 	pvm_initsend(PvmDataDefault);
 	pvm_pkint(&feedback, 1, 1);
+	pvm_pkint(&mytid, 1, 1);
 	pvm_mcast(tids, L, MSG_MSTR);
 	
-	//Wysłanie do procesów informacji o legionach
+	//Wysłanie do procesów informacji o ich legionie
 	for (i = 0; i < L; i++){
-		legions[i].PID = tids[i];
+		legions[i].pID = tids[i];
 		pvm_initsend(PvmDataDefault);
-		pvm_pkint(&legions[i].R, 1, 1);
-		pvm_send(legions[i].PID, MSG_MSTR);
+		pvm_pkint(&legions[i].r, 1, 1);
+		pvm_send(legions[i].pID, MSG_MSTR);
 	}
 
 	//Wysłanie do procesów informacji o traktach
@@ -162,6 +152,7 @@ main(){
 	FILE * file = fopen("stats.csv", "w");
 	if (file == NULL)
 	{
+		pvm_halt();
 		printf("Nie udalo sie otworzyc pliku stats.csv\n");
 		exit(1);
 	}
@@ -171,17 +162,17 @@ main(){
 	for (i = 0; i < T; i++)
 		fprintf(file, "T;%d;%d\n", i, trakts[i].t);
 	for (i = 0; i < L; i++)
-		fprintf(file, "L;%d;%d\n", legions[i].R, legions[i].PID);
+		fprintf(file, "L;%d;%d\n", legions[i].r, legions[i].pID);
 
 	while (1)
 	{
 		int bufid = pvm_recv(-1, MSG_SLV);
 		pvm_upkbyte(&msgIn.type);
-		pvm_upkint(&msgIn.PID, 1, 1);
-		pvm_upkint(&msgIn.T, 1, 1);
-		pvm_upkint(&msgIn.ID, 1, 1);
+		pvm_upkint(&msgIn.pID, 1, 1);
+		pvm_upkint(&msgIn.t, 1, 1);
+		pvm_upkint(&msgIn.iD, 1, 1);
 
-		fprintf(file, "%c;%d;%d;%d\n", msgIn.type, msgIn.PID, msgIn.T, msgIn.ID);
+		fprintf(file, "%c;%d;%d;%d\n", msgIn.type, msgIn.pID, msgIn.t, msgIn.iD);
 	}
 	fclose(file);
 	pvm_exit();					//Opuszczenie maszyny wirtualnej przez mastera
