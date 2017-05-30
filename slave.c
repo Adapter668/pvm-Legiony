@@ -35,7 +35,7 @@ void PrepareMessage()
 {
 	pvm_initsend(PvmDataDefault);
 	pvm_pkbyte(&msgOut.type, 1, 1);
-	pvm_pkint(&msgOut.pID, 1, 1);
+	pvm_pkint(&msgOut.tID, 1, 1);
 	pvm_pkint(&msgOut.t, 1, 1);
 	pvm_pkint(&msgOut.iD, 1, 1);
 }
@@ -44,11 +44,66 @@ void PrepareMessage()
 Wiadomośc musi być już w buforze odbiorczym!- polecenie pvm_recv lub pvm_trecv przed wywołaniem procedury*/
 void UnpackMessage()
 {
-	pvm_upkbyte(&msgIn.type);
-	pvm_upkint(&msgIn.pID, 1, 1);
+	pvm_upkbyte(&msgIn.type, 1, 1);
+	pvm_upkint(&msgIn.tID, 1, 1);
 	pvm_upkint(&msgIn.t, 1, 1);
 	pvm_upkint(&msgIn.iD, 1, 1);
 }
+
+//Reakcja na wiadomość
+void Receives() {
+	//Odpakowanie wiadomości
+	UnpackMessage();
+
+	//Żądanie
+	if (msgIn.type == MSG_REQUEST)
+	{
+		if (trakts[msgIn.t] <= msgIn.iD)
+			trakts[msgIn.t] = msgIn.iD + 1;
+
+		if (msgIn.t == myTrakt.t)
+		{
+			if (legion.state == ON_TRAKT) {
+				SendMessage(MSG_ANSWER, myTrakt.t, msgIn.tID);
+				WaitingAdd(msgIn.tID);
+			}
+
+			if (legion.state == STARTS)
+			{
+				if (msgIn.tID < myTrakt.priority || (msgIn.tID == myTrakt.priority && msgIn.tID < legion.tID))
+				{
+					SendMessage(MSG_ANSWER, myTrakt.t, msgIn.tID);
+				}
+				else
+				{
+					WaitingAdd(msgIn.tID);
+				}
+			}
+		}
+		else
+			SendMessage(MSG_ANSWER, myTrakt.t, msgIn.tID);
+	}
+
+	//Opuszczanie trasy
+	if (msgIn.type == MSG_LEAVE)
+	{
+		if (msgIn.t == myTrakt.t)
+		{
+			myTrakt.sum -= msgIn.iD;
+		}
+	}
+
+	//Odpowiedź
+	if (msgIn.type == MSG_ANSWER)
+	{
+		if (msgIn.t == myTrakt.t)
+		{
+			myTrakt.sum += msgIn.iD;
+			myTrakt.barrier--;
+		}
+	}
+}
+
 
 //Odbiór wiadomości (timeout)
 void MRecvTout(double tout)
@@ -66,7 +121,7 @@ void MRecvTout(double tout)
 			Receives();
 
 		stop = time();
-		restt -= ((double)(stop - start)) / CLOCKS_PER_SEC;
+		tout -= ((double)(stop - start)) / CLOCKS_PER_SEC;
 	}
 }
 
@@ -96,7 +151,7 @@ void SendToMaster()
 */
 void SendMessage(char type, int t, int tid)
 {
-	msgOut.pID = legion.pID;
+	msgOut.tID = legion.tID;
 	msgOut.type = type;
 	msgOut.t = t;
 
@@ -116,7 +171,7 @@ void SendMessage(char type, int t, int tid)
 		{
 			msgOut.iD = legion.r;
 			PrepareMessage();
-			pvm_mcast(tids.tID, tids.n, MSG_SLV);
+			pvm_mcast(waiting.tID, waiting.n, MSG_SLV);
 		}
 		else
 		{
@@ -134,7 +189,7 @@ void SendMessage(char type, int t, int tid)
 		SendToMaster();
 		//wysłanie do wszystkich
 		PrepareMessage();
-		pvm_mcast(tids.tID, tids.n, MSG_SLV);
+		pvm_mcast(waiting.tID, waiting.n, MSG_SLV);
 		break;
 
 	case MSG_ON_TRAKT:
@@ -144,60 +199,6 @@ void SendMessage(char type, int t, int tid)
 
 	default:
 		break;
-	}
-}
-
-//Reakcja na wiadomość
-void Receives() {
-	//Odpakowanie wiadomości
-	UnpackMessage();
-	
-	//Żądanie
-	if (msgIn.type == MSG_REQUEST) 
-	{
-		if(trakts[msgIn.t] <= msgIn.iD) 
-				trakts[msgIn.t] = msgIn.iD + 1;
-
-		if(msgIn.t == myTrakt.t) 
-		{
-			if (legion.state == ON_TRAKT) {
-				SendMessage(MSG_ANSWER, myTrakt.t, msgIn.tID);
-				WaitingAdd(msgIn.tID);
-			}
-
-			if(legion.state == STARTS) 
-			{
-				if (msgIn.tID < myTrakt.priority || (msgIn.tID == myTrakt.priority && msgIn.tID < legion.tID))
-				{
-					SendMessage(MSG_ANSWER, myTrakt.t, msgIn.tID);
-				} 
-				else 
-				{
-					WaitingAdd(msgIn.tID);
-				}
-			}
-		} 
-		else
-			SendMessage(MSG_ANSWER, myTrakt.t, msgIn.tID);
-	} 
-
-	//Opuszczanie trasy
-	if (msgIn.type == MSG_LEAVE)
-	{
-		if (msgIn.t == myTrakt.t)
-		{
-			myTrakt.sum -= msgIn.iD;
-		}
-	}
-
-	//Odpowiedź
-	if (msgIn.type == MSG_ANSWER)
-	{
-		if (msgIn.t == myTrakt.t) 
-		{
-			myTrakt.sum += msgIn.iD;
-			barier--;
-		}
 	}
 }
 
@@ -227,7 +228,7 @@ void Enter() {
 //Przjeście traktem
 void Go() {
 	//Zmiana stanu
-	state = ON_TRAKT;
+	legion.state = ON_TRAKT;
 
 	//Wysłanie wiadomości o wejściu na trakt do mastera
 	SendMessage(MSG_ON_TRAKT, myTrakt.t, -1);
@@ -241,7 +242,7 @@ void Go() {
 	//Zejście z traktu
 	SendMessage(MSG_LEAVE, myTrakt.t, -1);
 
-	//Wyczyszczenie tablicy TIDS
+	//Wyczyszczenie tablicy waiting
 	WaitingClear();
 }
 
@@ -256,10 +257,10 @@ void Rest() {
 
 main() {
 	srand(time(NULL));
-	TidsClear();
+	WaitingClear();
 
 	int i;
-	legion.pID = pvm_mytid();
+	legion.tID = pvm_mytid();
 	
 	//Pobranie informacji o feedback
 	pvm_recv(-1, MSG_MSTR);
@@ -276,7 +277,7 @@ main() {
 		pvm_recv(-1, MSG_MSTR);
 		pvm_upkint(&trakts[i].t, 1, 1);
 		pvm_upkint(&trakts[i].time, 1, 1);
-		trakts[i].ID = 0;
+		trakts[i].iD = 0;
 	}
 	
 	//dołączenie do grupy i bariera
