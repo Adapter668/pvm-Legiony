@@ -140,7 +140,7 @@ void Receives() {
 
 			if (legion.state == STARTS)
 			{
-				if (msgIn.tID < myTrakt.priority || (msgIn.tID == myTrakt.priority && msgIn.tID < legion.tID))
+				if (msgIn.iD < myTrakt.priority || (msgIn.iD == myTrakt.priority && msgIn.tID < legion.tID))
 				{
 					SendMessage(MSG_ANSWER, myTrakt.t, msgIn.tID);
 				}
@@ -178,20 +178,19 @@ void Receives() {
 //Odbiór wiadomości (timeout)
 void MRecvTout(double tout)
 {
-	time_t start, stop;
+	struct timeval start, stop;
 	while (tout > 0)
 	{
-		start = time(NULL);
-		
+		gettimeofday(&start, NULL);
 		//odbieranie wiadomości
 		struct timeval timeout;
 		timeout.tv_sec = (int) tout;
-		timeout.tv_usec = (int) ((tout - floor(tout) / CLOCKS_PER_SEC * 1000000);
+		timeout.tv_usec = (int) ((tout - floor(tout)) / 1000000);
 		if (pvm_trecv(-1, MSG_SLV, &timeout) > 0)
 			Receives();
 
-		stop = time(NULL);
-		tout -= ((double)(stop - start)) / CLOCKS_PER_SEC;
+		gettimeofday(&stop, NULL);
+		tout -= stop.tv_sec - start.tv_sec + (stop.tv_usec - start.tv_usec)/1000;
 	}
 }
 

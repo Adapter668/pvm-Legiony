@@ -172,7 +172,8 @@ main(){
 		pvm_upkint(&msgIn.t, 1, 1);
 		pvm_upkint(&msgIn.iD, 1, 1);
 
-		fprintf(file, "%c;%d;%d;%d\n", msgIn.type, msgIn.tID, msgIn.t, msgIn.iD);
+		//fprintf(file, "%c;%d;%d;%d\n", msgIn.type, msgIn.tID, msgIn.t, msgIn.iD);
+		printf("%c;%d;%d;%d\n", msgIn.type, msgIn.tID, msgIn.t, msgIn.iD);
 	}
 	fclose(file);
 	pvm_exit();					//Opuszczenie maszyny wirtualnej przez mastera
