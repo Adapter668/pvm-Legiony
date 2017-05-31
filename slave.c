@@ -10,7 +10,7 @@ struct SMyTrakt{
 }myTrakt;
 
 struct STids{
-	int tID[T];
+	int tID[L];
 	int n;
 }waiting;
 
@@ -23,7 +23,7 @@ void WaitingClear()
 {
 	int i;
 	for (i = 0; i < waiting.n; i++)
-		waiting.tID[waiting.n++] = -1;
+		waiting.tID[waiting.n] = -1;
 	waiting.n = 0;
 }
 
@@ -42,13 +42,13 @@ void PrepareMessage()
 
 //Wysyłanie komunikatu zwrotnego do mastera (do testów)
 int feedback;
-int maserTID;
+int masterTID;
 void SendToMaster()
 {
 	if (feedback == FEEDBACK_ON)
 	{
 		PrepareMessage();
-		pvm_send(maserTID, MSG_SLV);
+		pvm_send(masterTID, MSG_SLV);
 	}
 }
 
@@ -69,6 +69,7 @@ void SendMessage(char type, int t, int tid)
 	case MSG_REQUEST:
 		msgOut.iD = myTrakt.priority;
 		PrepareMessage();
+		pvm_send(masterTID, MSG_SLV);
 		pvm_bcast(GRPNAME, MSG_SLV);
 		break;
 
@@ -79,12 +80,14 @@ void SendMessage(char type, int t, int tid)
 		{
 			msgOut.iD = legion.r;
 			PrepareMessage();
+			pvm_send(masterTID, MSG_SLV);
 			pvm_mcast(waiting.tID, waiting.n, MSG_SLV);
 		}
 		else
 		{
 			msgOut.iD = 0;
 			PrepareMessage();
+			pvm_send(masterTID, MSG_SLV);
 			pvm_send(tid, MSG_SLV);
 		}
 		break;
@@ -151,7 +154,7 @@ void Receives() {
 			}
 		}
 		else
-			SendMessage(MSG_ANSWER, myTrakt.t, msgIn.tID);
+			SendMessage(MSG_ANSWER, msgIn.t, msgIn.tID);
 	}
 
 	//Opuszczanie trasy
@@ -257,16 +260,17 @@ void Rest() {
 }
 
 main() {
-	srand(time(NULL));
+	
 	WaitingClear();
 
 	int i;
 	legion.tID = pvm_mytid();
+	srand(legion.tID);
 	
 	//Pobranie informacji o feedback
 	pvm_recv(-1, MSG_MSTR);
 	pvm_upkint(&feedback, 1, 1);
-	pvm_upkint(&maserTID, 1, 1);
+	pvm_upkint(&masterTID, 1, 1);
 	
 	//Pobranie informacji o legionie
 	pvm_recv(-1, MSG_MSTR);

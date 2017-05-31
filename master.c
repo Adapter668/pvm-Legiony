@@ -109,7 +109,7 @@ void ConfigInit(){
 }
 
 main(){
-	
+	printf("start\n");
 	int i;						//Zmienna sterująca pętlami
 
 	ConfigInit();
@@ -160,21 +160,29 @@ main(){
 
 	fprintf(file, "%d;%d\n", T, L);
 	for (i = 0; i < T; i++)
+	{
 		fprintf(file, "T;%d;%d\n", i, trakts[i].t);
+		printf("T;%d;%d\n", i, trakts[i].t);
+	}
 	for (i = 0; i < L; i++)
+	{
 		fprintf(file, "L;%d;%d\n", legions[i].r, legions[i].tID);
-
+		printf("L;%d;%d\n", legions[i].r, legions[i].tID);
+	}
+	fclose(file);
+	printf("Zaczynam odbior\n");
 	while (1)
 	{
+		file = fopen("stats.csv", "aw");
 		int bufid = pvm_recv(-1, MSG_SLV);
 		pvm_upkbyte(&msgIn.type, 1, 1);
 		pvm_upkint(&msgIn.tID, 1, 1);
 		pvm_upkint(&msgIn.t, 1, 1);
 		pvm_upkint(&msgIn.iD, 1, 1);
 
-		//fprintf(file, "%c;%d;%d;%d\n", msgIn.type, msgIn.tID, msgIn.t, msgIn.iD);
+		fprintf(file, "%c;%d;%d;%d\n", msgIn.type, msgIn.tID, msgIn.t, msgIn.iD);
 		printf("%c;%d;%d;%d\n", msgIn.type, msgIn.tID, msgIn.t, msgIn.iD);
+		fclose(file);
 	}
-	fclose(file);
 	pvm_exit();					//Opuszczenie maszyny wirtualnej przez mastera
 }
