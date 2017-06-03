@@ -1,13 +1,14 @@
 #include "def.h"
 
-struct SMessage msgIn, msgOut;
-
 struct SMyTrakt{
 	int t;			//Nr traktu, którym legion ma przejść
 	int priority;	//Priorytet, z jakim proces ubiega się o trakt
 	int sum;		//Suma legionistów obecnych na trakcie
 	int barrier;		//Na ile odpowiedzi czeka proces
 }myTrakt;
+
+struct SLegion legion;
+struct STrakt trakts[T];
 
 struct STids{
 	int tID[L];
@@ -16,7 +17,8 @@ struct STids{
 
 void WaitingAdd(int tID)
 {
-	waiting.tID[waiting.n++] = tID;
+	waiting.tID[waiting.n] = tID;
+	waiting.n++;
 }
 
 void WaitingClear()
@@ -27,10 +29,8 @@ void WaitingClear()
 	waiting.n = 0;
 }
 
-struct SLegion legion;
-struct STrakt trakts[T];
-
 //Przygtowywanie wiadomości do wysłania
+struct SMessage msgIn, msgOut;
 void PrepareMessage()
 {
 	pvm_initsend(PvmDataDefault);
@@ -45,10 +45,34 @@ int feedback;
 int masterTID;
 void SendToMaster()
 {
-	if (feedback == FEEDBACK_ON)
+	switch(feedback)
 	{
+	case FEEDBACK_ON:
 		PrepareMessage();
 		pvm_send(masterTID, MSG_SLV);
+		break;
+	
+	case FEEDBACK_ON_NO_A:
+		if(msgOut.type != MSG_ANSWER)
+		{
+			PrepareMessage();
+			pvm_send(masterTID, MSG_SLV);
+		}
+		break;
+	
+	case FEEDBACK_ON_TRAKT:
+		if(msgOut.type == MSG_ON_TRAKT || msgOut.type == MSG_LEAVE)
+		{
+			PrepareMessage();
+			pvm_send(masterTID, MSG_SLV);
+		}
+		break;
+	
+	case FEEDBACK_OFF:
+		break;
+	
+	default:
+		break;
 	}
 }
 
@@ -56,6 +80,7 @@ void SendToMaster()
 /*
 type	-	typ komunikatu
 t		-	jakiego traktu dotyczy wiadomość
+tid		-	procesu, do którego ma zostać wysłana wiadomość
 */
 void SendMessage(char type, int t, int tid)
 {
@@ -69,7 +94,7 @@ void SendMessage(char type, int t, int tid)
 	case MSG_REQUEST:
 		msgOut.iD = myTrakt.priority;
 		PrepareMessage();
-		pvm_send(masterTID, MSG_SLV);
+		SendToMaster();
 		pvm_bcast(GRPNAME, MSG_SLV);
 		break;
 
@@ -80,14 +105,24 @@ void SendMessage(char type, int t, int tid)
 		{
 			msgOut.iD = legion.r;
 			PrepareMessage();
-			pvm_send(masterTID, MSG_SLV);
-			pvm_mcast(waiting.tID, waiting.n, MSG_SLV);
+			SendToMaster();
+			if(tid > 0)
+			{
+				pvm_send(tid, MSG_SLV);
+			}
+			else
+			{
+				if(waiting.n > 0)			
+				{
+					pvm_mcast(waiting.tID, waiting.n, MSG_SLV);
+				}	
+			}
 		}
 		else
 		{
 			msgOut.iD = 0;
 			PrepareMessage();
-			pvm_send(masterTID, MSG_SLV);
+			SendToMaster();
 			pvm_send(tid, MSG_SLV);
 		}
 		break;
@@ -98,11 +133,15 @@ void SendMessage(char type, int t, int tid)
 
 		//wysłanie do mastera
 		SendToMaster();
-		//wysłanie do wszystkich
-		PrepareMessage();
-		pvm_mcast(waiting.tID, waiting.n, MSG_SLV);
+		//wysłanie do wszystkich z listy waiting
+		if(waiting.n > 0)			
+		{
+			PrepareMessage();
+			pvm_mcast(waiting.tID, waiting.n, MSG_SLV);
+		}
 		break;
 
+		//Poinformowanie mastera o wejściu na trasę
 	case MSG_ON_TRAKT:
 		msgOut.iD = legion.r;
 		SendToMaster();
@@ -137,8 +176,8 @@ void Receives() {
 		if (msgIn.t == myTrakt.t)
 		{
 			if (legion.state == ON_TRAKT) {
-				SendMessage(MSG_ANSWER, myTrakt.t, msgIn.tID);
 				WaitingAdd(msgIn.tID);
+				SendMessage(MSG_ANSWER, myTrakt.t, msgIn.tID);
 			}
 
 			if (legion.state == STARTS)
@@ -177,23 +216,23 @@ void Receives() {
 	}
 }
 
-
 //Odbiór wiadomości (timeout)
-void MRecvTout(double tout)
+void MRecvTout(int tout)
 {
-	struct timeval start, stop;
+	time_t start, stop;
 	while (tout > 0)
 	{
-		gettimeofday(&start, NULL);
-		//odbieranie wiadomości
+		start = time(NULL);	
 		struct timeval timeout;
 		timeout.tv_sec = (int) tout;
 		timeout.tv_usec = (int) ((tout - floor(tout)) / 1000000);
+		
+		//odbieranie wiadomości
 		if (pvm_trecv(-1, MSG_SLV, &timeout) > 0)
 			Receives();
 
-		gettimeofday(&stop, NULL);
-		tout -= stop.tv_sec - start.tv_sec + (stop.tv_usec - start.tv_usec)/1000;
+		stop = time(NULL);	
+		tout -= stop - start;
 	}
 }
 
@@ -203,8 +242,6 @@ void MRecv()
 	pvm_recv(-1, MSG_SLV);
 	Receives();
 }
-
-
 
 //Wchodzenie na trakt
 void Enter() {
@@ -241,7 +278,7 @@ void Go() {
 	SendMessage(MSG_ANSWER, myTrakt.t, -1);
 
 	//Spędzenie czasu na trakcie
-	MRecvTout((double) trakts[myTrakt.t].time);
+	MRecvTout(trakts[myTrakt.t].time);
 
 	//Zejście z traktu
 	SendMessage(MSG_LEAVE, myTrakt.t, -1);
@@ -256,7 +293,7 @@ void Rest() {
 	legion.state = WAITS;
 	
 	//Odczekanie losowego czasu - jeśli pojawi się jakaś wiadomość, to ją odbierz
-	MRecvTout((double) (rand()%5 + 1));
+	MRecvTout(rand()%5 + 1);
 }
 
 main() {
@@ -289,6 +326,10 @@ main() {
 	pvm_joingroup(GRPNAME);
 	pvm_barrier(GRPNAME, L);
 	
+struct SMessage asdf;
+asdf.tID = legion.tID;
+		asdf.t = -1;
+		asdf.iD = 11111;
 	//działanie
 	while (1)
 	{
